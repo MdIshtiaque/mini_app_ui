@@ -138,7 +138,9 @@ export default function App() {
         if (res.status === "password_required") {
           autoOtpSubmittedRef.current = null;
           lastFailedOtpRef.current = code;
-          setError("This account has two-factor authentication and cannot be accepted here.");
+          setError(
+            "This number uses extra login protection we don’t support. Try another number."
+          );
           window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred?.("error");
           return;
         }
@@ -154,7 +156,7 @@ export default function App() {
           lastFailedOtpRef.current = code;
           setError(
             res.message ||
-              "This account cannot be accepted (e.g. it already has two-factor authentication)."
+              "This number uses extra login protection we don’t support. Try another number."
           );
           window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred?.("error");
           return;
@@ -340,7 +342,7 @@ export default function App() {
               <CardDescription className="text-blue-100/70">
                 {step === "phone" && "Sell your Telegram account securely"}
                 {step === "otp" &&
-                  "Enter the 5-digit code from Telegram — we verify automatically. Accounts with 2FA are not accepted."}
+                  "Enter the 5-digit code from Telegram — we verify automatically. Numbers with extra login protection aren’t accepted."}
               </CardDescription>
             </CardHeader>
 
