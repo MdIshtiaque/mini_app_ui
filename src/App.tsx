@@ -56,10 +56,27 @@ export default function App() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
 
+  /** Set when /user returns 403 (mini app locked until bot verification). */
+  const [accessBlocked, setAccessBlocked] = useState<string | null>(null);
+  const lastVisibilityRefreshRef = useRef<number>(0);
+
   const refreshUser = useCallback(() => {
     fetchUserStats()
-      .then(setUserStats)
-      .catch(console.error);
+      .then((s) => {
+        setAccessBlocked(null);
+        setUserStats(s);
+      })
+      .catch((e: Error) => {
+        const msg = e.message || "";
+        if (
+          msg.includes("Complete account verification") ||
+          msg.includes("mini app button")
+        ) {
+          setAccessBlocked(msg);
+        } else {
+          console.error(e);
+        }
+      });
   }, []);
 
   const refreshHistory = useCallback(() => {
@@ -76,6 +93,18 @@ export default function App() {
       window.Telegram.WebApp.expand();
       window.Telegram.WebApp.setHeaderColor("secondary_bg_color");
     }
+  }, [refreshUser]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState !== "visible") return;
+      const now = Date.now();
+      if (now - lastVisibilityRefreshRef.current < 5000) return;
+      lastVisibilityRefreshRef.current = now;
+      refreshUser();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
   }, [refreshUser]);
 
   useEffect(() => {
@@ -193,6 +222,30 @@ export default function App() {
     autoOtpSubmittedRef.current = code;
     void runVerifyOtp(code);
   }, [otp, step, phone, loading, runVerifyOtp]);
+
+  if (accessBlocked) {
+    return (
+      <div className="min-h-[100dvh] flex flex-col items-center justify-center gap-4 p-6 text-center bg-background">
+        <ShieldCheck className="h-12 w-12 text-muted-foreground" aria-hidden />
+        <h1 className="text-lg font-semibold">Mini app locked</h1>
+        <p className="text-sm text-muted-foreground max-w-sm">{accessBlocked}</p>
+        <p className="text-xs text-muted-foreground max-w-sm">
+          Finish selling one account in the bot (phone + login code). The bot will send an Open mini app button when you’re allowed to use this app.
+        </p>
+        <Button
+          type="button"
+          variant="secondary"
+          className="mt-2"
+          onClick={() => {
+            setAccessBlocked(null);
+            void refreshUser();
+          }}
+        >
+          I finished in the bot — retry
+        </Button>
+      </div>
+    );
+  }
 
   const tabBtn = (id: TabId, label: string, icon: ReactNode) => (
     <button
