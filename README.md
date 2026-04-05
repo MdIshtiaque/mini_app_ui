@@ -71,4 +71,24 @@ export default defineConfig([
   },
 ])
 ```
+
+---
+
 # mini_app_ui
+
+Telegram Mini App (React + Vite) for the `tg_bot` FastAPI `/api/webapp` routes.
+
+## Local dev
+
+1. Run `tg_bot` with Uvicorn (e.g. `http://127.0.0.1:8000`).
+2. Copy `.env.example` → `.env` and set `VITE_DEV_PROXY_TARGET` if your API is not on port 8000.
+3. `npm install` && `npm run dev`
+
+## Deploy on Vercel
+
+1. Import this repo in [Vercel](https://vercel.com) (root = `mini_app_ui` if the repo is a monorepo, set **Root Directory** accordingly).
+2. **Environment variable (required):** `VITE_API_URL` = your public API base, e.g. `https://your-server.com/api/webapp` (no trailing slash). The FastAPI app must use **HTTPS** and stay reachable from the internet.
+3. Deploy. Set **`MINI_APP_URL`** in the bot’s `.env` to the production URL (e.g. `https://your-app.vercel.app`).
+4. In [@BotFather](https://t.me/BotFather), set the menu button Web App URL to the same URL if you rely on that flow.
+
+`vercel.json` includes an SPA fallback rewrite. `tg_bot` already allows CORS `*` for browser calls.
