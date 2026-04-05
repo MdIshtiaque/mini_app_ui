@@ -49,13 +49,17 @@ async function readJsonResponse<T>(res: Response): Promise<T> {
   return parsed as T;
 }
 
-export const getHeaders = () => {
-  const initData = window.Telegram?.WebApp?.initData || "";
-  return {
-    "Content-Type": "application/json",
-    "x-tg-init-data": initData,
-  };
-};
+/** Raw initData query string for HMAC validation (must match Telegram.WebApp.initData). */
+export function getInitDataString(): string {
+  const tg = window.Telegram?.WebApp
+  if (!tg) return ""
+  return typeof tg.initData === "string" ? tg.initData.trim() : ""
+}
+
+export const getHeaders = () => ({
+  "Content-Type": "application/json",
+  "x-tg-init-data": getInitDataString(),
+});
 
 export type EnabledCountry = {
   calling_code: string;
