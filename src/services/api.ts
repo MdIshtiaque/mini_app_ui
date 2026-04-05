@@ -56,10 +56,16 @@ export function getInitDataString(): string {
   return typeof tg.initData === "string" ? tg.initData.trim() : ""
 }
 
-export const getHeaders = () => ({
-  "Content-Type": "application/json",
-  "x-tg-init-data": getInitDataString(),
-});
+export const getHeaders = () => {
+  const initData = getInitDataString();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "x-tg-init-data": initData,
+  };
+  // Some Telegram clients / proxies handle Authorization better than custom headers.
+  if (initData) headers["Authorization"] = `tma ${initData}`;
+  return headers;
+};
 
 export type EnabledCountry = {
   calling_code: string;

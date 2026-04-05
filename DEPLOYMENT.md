@@ -1,93 +1,163 @@
-# Deploy mini app on your VPS (Nginx + HTTPS)
+# Deploy the mini app on your VPS (step by step)
 
-This guide serves the built **React/Vite** app as static files on a subdomain (example: **`miniapp.ksisms.com`**) on the same machine as **`tg_bot`**, with the API already exposed at **`https://bot.ksisms.com`** (or another HTTPS origin).
+This guide deploys **mini_app_ui** as static files on **`https://miniapp.YOURDOMAIN.com`** (example uses **`miniapp.ksisms.com`** — replace with your domain everywhere).
 
-## Prerequisites
+**Assumptions**
 
-- **`tg_bot`** running behind Nginx with **HTTPS** and working **`/api/webapp/...`** routes.
-- **DNS** control for your domain.
-- **[Bun](https://bun.sh)** installed where you build (your laptop or the VPS). Quick install:
+- **`tg_bot`** is already on the same VPS (or reachable) with **HTTPS**, e.g. **`https://bot.ksisms.com`**, and **`/api/webapp/...`** works.
+- You have **sudo** on the VPS and access to **DNS** for your domain.
+- The mini app repo is on **GitHub/GitLab** (or you can paste any **git clone** URL).
 
-  ```bash
-  curl -fsSL https://bun.sh/install | bash
-  ```
+---
 
-  Then open a new shell or `source ~/.bashrc` so `bun` is on `PATH`.
-
-## Important: `VITE_API_URL` is baked in at build time
-
-Vite reads **`VITE_*`** variables when you run **`bun run build`** and inlines them into the JS bundle. There is no runtime `.env` on the server for the browser.
-
-Set this **before every production build** you deploy:
+## Step 1 — Log in to the VPS
 
 ```bash
-export VITE_API_URL="https://bot.ksisms.com/api/webapp"
+ssh root@YOUR_VPS_IP
+# or ssh youruser@YOUR_VPS_IP
 ```
 
-(No trailing slash. Replace the host if your API uses another name.)
+Use the account you normally use to manage **`/var/www`** and **Nginx**.
 
 ---
 
-## Step 1 — DNS
+## Step 2 — Install Git and Bun
 
-In your DNS panel (e.g. PowerDNS), add:
+**Git** (if not already installed):
 
-| Type | Name / host | Value        |
-|------|-------------|--------------|
-| **A** | `miniapp`   | Your VPS IPv4 |
+```bash
+sudo apt update
+sudo apt install -y git
+```
 
-Wait until `miniapp.yourdomain.com` resolves to the server.
+**Bun** (JavaScript runtime + package manager; used instead of npm):
+
+```bash
+curl -fsSL https://bun.sh/install | bash
+```
+
+Close and reopen the shell, or:
+
+```bash
+source ~/.bashrc
+```
+
+Confirm:
+
+```bash
+bun --version
+git --version
+```
 
 ---
 
-## Step 2 — Build the frontend
+## Step 3 — Create the app directory and clone the repo
 
-### Option A — Build on the VPS
+Pick an install root (this guide uses **`/var/www/mini_app_ui`**).
 
 ```bash
 sudo mkdir -p /var/www/mini_app_ui
 sudo chown -R "$USER:$USER" /var/www/mini_app_ui
 cd /var/www/mini_app_ui
-
-# If you use git:
-git clone <your-repo-url> .
-# or rsync/scp your project here
-
-bun install
-export VITE_API_URL="https://bot.ksisms.com/api/webapp"
-bun run build
 ```
 
-The output folder is **`dist/`**. Nginx will use this as `root`.
-
-**Reproducible installs:** commit **`bun.lock`** to git, then on the server use:
-
-`bun install --frozen-lockfile`
-
-### Option B — Build on your computer, upload only `dist/`
+**Clone** your repository. Replace **`YOUR_GIT_URL`** with your real remote (HTTPS or SSH):
 
 ```bash
-cd /path/to/mini_app_ui
-export VITE_API_URL="https://bot.ksisms.com/api/webapp"
-bun install
-bun run build
-
-rsync -avz --delete dist/ root@YOUR_VPS_IP:/var/www/mini_app_ui/dist/
+git clone YOUR_GIT_URL .
 ```
 
-Adjust paths and user as needed.
+Examples:
+
+```bash
+git clone https://github.com/YOUR_USER/mini_app_ui.git .
+# or
+git clone git@github.com:YOUR_USER/mini_app_ui.git .
+```
+
+You should see **`package.json`**, **`src/`**, etc. in **`/var/www/mini_app_ui`**.
+
+If the repo is a **monorepo** and the app lives in a subfolder:
+
+```bash
+git clone YOUR_GIT_URL repo
+cd repo/mini_app_ui   # adjust path
+# continue from Step 4 inside this directory
+```
 
 ---
 
-## Step 3 — Nginx site for the mini app
+## Step 4 — Install dependencies with Bun
 
-Create a new site (do **not** reuse the `bot.` vhost; keep API and static UI separate).
+From the directory that contains **`package.json`**:
+
+```bash
+cd /var/www/mini_app_ui
+bun install
+```
+
+If the repo includes **`bun.lock`**, use a reproducible install:
+
+```bash
+bun install --frozen-lockfile
+```
+
+---
+
+## Step 5 — Set the API URL and build (production bundle)
+
+The browser needs a **public HTTPS** base for **`/api/webapp`**. That value is **compiled into** the JS at build time (Vite **`VITE_*`** env vars).
+
+**Before** `bun run build`, set **`VITE_API_URL`** (no trailing slash):
+
+```bash
+export VITE_API_URL="https://bot.ksisms.com/api/webapp"
+```
+
+Change **`bot.ksisms.com`** if your API uses another hostname.
+
+Build:
+
+```bash
+bun run build
+```
+
+On success you get a **`dist/`** folder (HTML, JS, CSS). Nginx will serve **`dist/`** as the site root.
+
+To make **`export`** persistent for future shells, you can add the line to **`~/.bashrc`** or a small **`deploy.sh`**; you must run **`export`** again (or source it) **every time** you rebuild if you don’t use a script.
+
+---
+
+## Step 6 — Add DNS for the mini app hostname
+
+In your DNS panel (e.g. PowerDNS, Cloudflare, registrar):
+
+| Type | Name / host | Value        |
+|------|-------------|--------------|
+| **A** | `miniapp`   | Your VPS IPv4 |
+
+That creates **`miniapp.YOURDOMAIN.com`** → your server.
+
+Wait until it resolves:
+
+```bash
+dig +short miniapp.ksisms.com A
+# should print your VPS IP
+```
+
+(Replace **`miniapp.ksisms.com`** with your real FQDN.)
+
+---
+
+## Step 7 — Create an Nginx server block
+
+Use a **separate** vhost from your API (**`bot.`**). The mini app is static files only.
 
 ```bash
 sudo nano /etc/nginx/sites-available/miniapp-ksisms
 ```
 
-Example (HTTP first — Certbot will add SSL in the next step):
+Paste (adjust **`server_name`** and **`root`** if your paths differ):
 
 ```nginx
 server {
@@ -97,7 +167,6 @@ server {
     root /var/www/mini_app_ui/dist;
     index index.html;
 
-    # Cache hashed assets; HTML should stay fresh
     location /assets/ {
         try_files $uri =404;
         add_header Cache-Control "public, max-age=31536000, immutable";
@@ -109,82 +178,129 @@ server {
 }
 ```
 
-Enable and test:
+Save and exit (`Ctrl+O`, `Enter`, `Ctrl+X` in nano).
+
+---
+
+## Step 8 — Enable the site and reload Nginx
 
 ```bash
 sudo ln -sf /etc/nginx/sites-available/miniapp-ksisms /etc/nginx/sites-enabled/
 sudo nginx -t
+```
+
+If the test says **syntax is ok**, reload:
+
+```bash
 sudo systemctl reload nginx
 ```
 
+You should get **HTTP** (not HTTPS yet) on port 80 for **`miniapp.ksisms.com`**.
+
 ---
 
-## Step 4 — HTTPS (Let’s Encrypt)
+## Step 9 — HTTPS with Let’s Encrypt (Certbot)
 
 ```bash
 sudo certbot --nginx -d miniapp.ksisms.com
 ```
 
-Follow the prompts. Certbot will add `listen 443 ssl` and redirect HTTP → HTTPS.
+Follow the prompts (email, agree to terms). Certbot will add **SSL** and usually **redirect HTTP → HTTPS**.
 
-Reload if needed:
+Reload Nginx if Certbot doesn’t do it:
 
 ```bash
 sudo systemctl reload nginx
 ```
 
+Open **`https://miniapp.ksisms.com`** in a browser — you should see the app with a valid padlock.
+
 ---
 
-## Step 5 — Point the Telegram bot at the new URL
+## Step 10 — Point the Telegram bot at the mini app URL
 
-On the VPS, edit **`tg_bot`** project **`.env`** (only file the app loads):
+On the VPS, edit **`tg_bot`**’s **`.env`** (only file that project loads):
+
+```bash
+nano /var/www/tg_bot/.env
+```
+
+Set (no trailing slash):
 
 ```env
 MINI_APP_URL=https://miniapp.ksisms.com
 ```
 
-No trailing slash. Then:
+Save, then restart the **bot** process so the menu Web App button updates:
 
 ```bash
 sudo systemctl restart tg-bot
 ```
 
-Telegram will use this for the **Menu button / Web App** URL your code sets in `post_init`.
-
-If you also set a Web App URL in **@BotFather**, make it match **`MINI_APP_URL`**.
+If you set a Web App URL in **@BotFather**, make it the **same** as **`MINI_APP_URL`**.
 
 ---
 
-## Step 6 — CORS
+## Step 11 — Smoke test
 
-`tg_bot` already uses permissive CORS for browser calls. If you ever lock CORS down, allow origin **`https://miniapp.ksisms.com`** for `/api/webapp`.
+1. **`https://miniapp.ksisms.com`** loads in a normal browser.
+2. Open the bot in **Telegram** → use **Open** / your Web App entry → tabs (**Sell**, **Rates**, **History**) load without **Invalid initialization data** (if they do, fix **`BOT_TOKEN`** / **`webapp.py`** on **`tg_bot`**).
+3. **`journalctl -u tg-api -f`** while using the app: you should see **`GET/POST /api/webapp/...`** with **200** (or **403** if the user is not unlocked yet — that’s a different message from HMAC failure).
 
 ---
 
-## Updating after code changes
+## Step 12 — CORS (usually nothing to do)
 
-1. Pull or upload new sources.  
-2. Rebuild **with the same `VITE_API_URL`** (or new API URL if it changed):
+**`tg_bot`** is typically configured with open CORS for browser calls. If you later restrict origins, allow **`https://miniapp.ksisms.com`** for **`/api/webapp`**.
+
+---
+
+## Updating the app after code changes
+
+```bash
+cd /var/www/mini_app_ui
+git pull
+export VITE_API_URL="https://bot.ksisms.com/api/webapp"
+bun install --frozen-lockfile   # or bun install
+bun run build
+```
+
+No need to restart **`tg-api`** for static-only changes. Restart **`tg-bot`** only if **`MINI_APP_URL`** changed.
+
+---
+
+## Alternative: build on your laptop, upload only `dist/`
+
+1. On your machine: clone the repo, install Bun, then:
 
    ```bash
+   cd /path/to/mini_app_ui
    export VITE_API_URL="https://bot.ksisms.com/api/webapp"
    bun install
    bun run build
    ```
 
-3. If you built locally, sync **`dist/`** again to `/var/www/mini_app_ui/dist/`.  
-4. No need to restart **`tg-api`** for static-only UI changes; restart **`tg-bot`** only if you changed **`MINI_APP_URL`**.
+2. Upload **`dist/`** to the server:
+
+   ```bash
+   rsync -avz --delete dist/ root@YOUR_VPS_IP:/var/www/mini_app_ui/dist/
+   ```
+
+3. Nginx **root** must stay **`/var/www/mini_app_ui/dist`**. No rebuild on the VPS required unless you change server-side steps.
 
 ---
 
-## Checklist
+## Checklist (end-to-end)
 
-- [ ] DNS **A** for `miniapp` → VPS  
-- [ ] `bun run build` with **`VITE_API_URL=https://bot.ksisms.com/api/webapp`**  
-- [ ] Nginx **`root`** points at **`dist/`** and **`try_files`** SPA fallback is set  
-- [ ] **Certbot** for **`miniapp.ksisms.com`**  
-- [ ] **`MINI_APP_URL=https://miniapp.ksisms.com`** in **`tg_bot` `.env`** + **`sudo systemctl restart tg-bot`**  
-- [ ] Open **`https://miniapp.ksisms.com`** in the browser (padlock OK), then test inside Telegram  
+- [ ] **Step 2** — Git + Bun on the VPS  
+- [ ] **Step 3** — **`git clone`** into **`/var/www/mini_app_ui`** (or chosen path)  
+- [ ] **Step 4** — **`bun install`**  
+- [ ] **Step 5** — **`VITE_API_URL`** set, **`bun run build`**, **`dist/`** exists  
+- [ ] **Step 6** — DNS **A** **`miniapp`** → VPS  
+- [ ] **Step 7–8** — Nginx site enabled, **`nginx -t`** OK  
+- [ ] **Step 9** — Certbot SSL for **`miniapp.…`**  
+- [ ] **Step 10** — **`MINI_APP_URL`**, **`systemctl restart tg-bot`**  
+- [ ] **Step 11** — Browser + Telegram tests pass  
 
 ---
 
@@ -192,7 +308,10 @@ If you also set a Web App URL in **@BotFather**, make it match **`MINI_APP_URL`*
 
 | Symptom | What to check |
 |--------|----------------|
-| Blank page / 404 on refresh | `try_files $uri $uri/ /index.html;` in `location /` |
-| API errors / wrong host | Rebuild with correct **`VITE_API_URL`**; old bundle still cached — hard refresh or bump deploy |
-| “Invalid initialization data” | **`tg_bot`** `webapp.py` initData validation + **`BOT_TOKEN`** on server; see **`tg_bot`** docs |
-| Mixed content | Mini app must be **HTTPS** if **`VITE_API_URL`** is **https://** |
+| **`git clone`** permission denied (SSH) | Add VPS SSH key to GitHub/GitLab, or use **HTTPS** clone URL. |
+| **`bun: command not found`** | Re-run Bun installer and **`source ~/.bashrc`**. |
+| Blank page or 404 after refresh | Nginx **`try_files $uri $uri/ /index.html;`** in **`location /`**. |
+| API calls wrong host / CORS | Rebuild with correct **`VITE_API_URL`**; hard-refresh the mini app. |
+| **Invalid initialization data** | **`tg_bot`** **`BOT_TOKEN`**, **`webapp.py`** initData validation; restart **`tg-api`**. |
+| **403** “Complete account verification…” | User must finish bot flow / unlock mini app in DB — not a deploy bug. |
+| Mixed content errors | Mini app and **`VITE_API_URL`** must both use **HTTPS**. |
